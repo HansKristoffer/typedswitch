@@ -778,4 +778,3 @@ describe('typedSwitch generic constraint mode', () => {
 		expectTypeOf(result).toEqualTypeOf<string | number>()
 	})
 })
-
