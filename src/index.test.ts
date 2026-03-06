@@ -1,7 +1,6 @@
 import { describe, expect, expectTypeOf, test } from 'bun:test'
 import {
 	typedSwitch,
-	switchNever,
 	type StringSwitchCases,
 	type PartialStringSwitchCases,
 	type ObjectSwitchCases,
@@ -246,36 +245,6 @@ describe('typedSwitch runtime behavior', () => {
 				'Invalid discriminant value for key "type": expected string, received number'
 			)
 		})
-	})
-})
-
-describe('switchNever runtime behavior', () => {
-	test('throws error with object info', () => {
-		const value = { unexpected: true } as never
-
-		expect(() => switchNever(value)).toThrow(
-			'Unexpected object: {"unexpected":true}'
-		)
-	})
-
-	test('used for exhaustiveness checking', () => {
-		type Status = 'a' | 'b'
-		const status: Status = 'a'
-
-		// This function should handle all cases
-		const handleStatus = (s: Status): string => {
-			switch (s) {
-				case 'a':
-					return 'handled a'
-				case 'b':
-					return 'handled b'
-				default:
-					// TypeScript ensures this is never reached
-					return switchNever(s)
-			}
-		}
-
-		expect(handleStatus(status)).toBe('handled a')
 	})
 })
 
@@ -634,10 +603,6 @@ describe('typedSwitch edge case types', () => {
 })
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Type tests - switchNever
-// ═══════════════════════════════════════════════════════════════════════════
-
-// ═══════════════════════════════════════════════════════════════════════════
 // Type tests - Sync vs Async return types
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -814,28 +779,3 @@ describe('typedSwitch generic constraint mode', () => {
 	})
 })
 
-describe('switchNever type checking', () => {
-	test('switchNever accepts never type', () => {
-		// switchNever should only accept `never` type
-		expectTypeOf(switchNever).parameters.toEqualTypeOf<[never]>()
-	})
-
-	test('switchNever used in exhaustive switch narrows to never', () => {
-		type Status = 'a' | 'b'
-
-		const handleStatus = (s: Status): string => {
-			switch (s) {
-				case 'a':
-					return 'handled a'
-				case 'b':
-					return 'handled b'
-				default:
-					// After handling all cases, s should be `never`
-					expectTypeOf(s).toBeNever()
-					return switchNever(s)
-			}
-		}
-
-		expectTypeOf(handleStatus).toBeFunction()
-	})
-})
