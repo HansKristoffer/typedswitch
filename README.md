@@ -21,7 +21,7 @@ bun add typedswitch
 - **Full type inference** — Return types are automatically inferred from your handlers
 - **Exhaustiveness checking** — TypeScript ensures all cases are handled at compile time
 - **Discriminated union support** — Works with any discriminant key, not just `type`
-- **Async-aware** — Mixed sync/async handlers return `Promise` automatically
+- **Async-aware** — Async handlers preserve their `Promise` return type
 - **Default handlers** — Handle remaining cases with a fallback
 - **Return type constraints** — Enforce that all handlers return a specific type
 
@@ -59,7 +59,7 @@ const result = typedSwitch(status, {
 
 ### Discriminated Union Input
 
-Switch on objects with a discriminant property (like `type`, `kind`, `status`, etc.):
+Switch on objects with a string-valued discriminant property (like `type`, `kind`, `status`, etc.):
 
 ```typescript
 type Event =
@@ -131,7 +131,7 @@ const description = typedSwitch(
 
 ### Async Handlers
 
-Mix sync and async handlers freely. If any handler returns a `Promise`, the result is automatically typed as `Promise`:
+Mix sync and async handlers freely. `typedSwitch` returns the selected handler's value directly, so async branches preserve their `Promise` return type while sync branches remain sync:
 
 ```typescript
 // All sync — returns string
@@ -142,18 +142,25 @@ const syncResult = typedSwitch(status, {
 })
 // syncResult: string
 
-// Any async — returns Promise<string>
+// All async — returns Promise<string>
 const asyncResult = typedSwitch(status, {
   success: async () => {
     const data = await fetchData()
     return data.message
   },
-  error: () => 'err',           // sync handlers still work
+  error: async () => 'err',
   pending: async () => 'wait',
 })
 // asyncResult: Promise<string>
 
 const message = await asyncResult
+
+// Mixed sync/async — returns string | Promise<string>
+const mixedResult = typedSwitch(status, {
+  success: () => 'ok',
+  error: async () => 'err',
+  pending: () => 'wait',
+})
 ```
 
 ### Return Type Inference
@@ -228,6 +235,8 @@ For discriminated unions:
 // Throws: "Unhandled case: unknown (discriminant key: "type"). Available cases: click, scroll, keypress"
 ```
 
+Object discriminants must be strings. Missing or non-string discriminant values throw a runtime error if they reach `typedSwitch`.
+
 ## API Reference
 
 ### `typedSwitch(value, cases)`
@@ -249,6 +258,10 @@ Switch on a discriminated union with partial cases and a default fallback.
 ### `typedSwitch<Constraint>()`
 
 Returns a constrained version of `typedSwitch` that enforces all handlers return a type extending `Constraint`.
+
+### Exported Helper Types
+
+`StringSwitchCases`, `PartialStringSwitchCases`, `ObjectSwitchCases`, and `PartialObjectSwitchCases` are exported for users who want to annotate reusable case maps.
 
 ## License
 

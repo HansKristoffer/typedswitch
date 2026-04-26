@@ -79,15 +79,6 @@ type RawCasesReturnType<Cases> = {
 		: RawHandlerReturnType<Cases[K]>
 }[keyof Cases]
 
-/**
- * Normalize return type:
- * - If any handler returns a Promise, the entire result becomes Promise<UnwrappedUnion>
- * - If all handlers are sync, returns the union as-is
- */
-type NormalizeReturnType<T> = [Extract<T, Promise<unknown>>] extends [never]
-	? T
-	: Promise<Awaited<T>>
-
 // ═══════════════════════════════════════════════════════════════════════════
 // String input mode types
 // ═══════════════════════════════════════════════════════════════════════════
@@ -201,18 +192,18 @@ export type ConstrainedTypedSwitch<Constraint> = {
 	>(
 		value: T,
 		cases: Cases
-	): NormalizeReturnType<RawCasesReturnType<Cases>>
+	): RawCasesReturnType<Cases>
 
 	// String input - partial cases allowed (with default)
 	<
 		T extends string,
 		Cases extends { [K in T]?: (value: K) => Constraint | Promise<Constraint> },
-		DefaultReturn extends Constraint
+		DefaultCase extends (value: T) => Constraint | Promise<Constraint>
 	>(
 		value: T,
 		cases: Cases,
-		defaultCase: (value: T) => DefaultReturn | Promise<DefaultReturn>
-	): NormalizeReturnType<RawCasesReturnType<Cases> | DefaultReturn>
+		defaultCase: DefaultCase
+	): RawCasesReturnType<Cases> | RawHandlerReturnType<DefaultCase>
 
 	// Object input with key - all cases required (no default)
 	<
@@ -228,7 +219,7 @@ export type ConstrainedTypedSwitch<Constraint> = {
 		value: T,
 		key: K,
 		cases: Cases
-	): NormalizeReturnType<RawCasesReturnType<Cases>>
+	): RawCasesReturnType<Cases>
 
 	// Object input with key - partial cases allowed (with default)
 	<
@@ -240,31 +231,31 @@ export type ConstrainedTypedSwitch<Constraint> = {
 				value: Extract<T, Record<K, V>>
 			) => Constraint | Promise<Constraint>
 		},
-		DefaultReturn extends Constraint
+		DefaultCase extends (value: T) => Constraint | Promise<Constraint>
 	>(
 		value: T,
 		key: K,
 		cases: Cases,
-		defaultCase: (value: T) => DefaultReturn | Promise<DefaultReturn>
-	): NormalizeReturnType<RawCasesReturnType<Cases> | DefaultReturn>
+		defaultCase: DefaultCase
+	): RawCasesReturnType<Cases> | RawHandlerReturnType<DefaultCase>
 }
 
 // String input - all cases required (no default)
 export function typedSwitch<
 	T extends string,
 	Cases extends { [K in T]: (value: K) => unknown }
->(value: T, cases: Cases): NormalizeReturnType<RawCasesReturnType<Cases>>
+>(value: T, cases: Cases): RawCasesReturnType<Cases>
 
 // String input - partial cases allowed (with default)
 export function typedSwitch<
 	T extends string,
 	Cases extends { [K in T]?: (value: K) => unknown },
-	DefaultReturn
+	DefaultCase extends (value: T) => unknown
 >(
 	value: T,
 	cases: Cases,
-	defaultCase: (value: T) => DefaultReturn | Promise<DefaultReturn>
-): NormalizeReturnType<RawCasesReturnType<Cases> | DefaultReturn>
+	defaultCase: DefaultCase
+): RawCasesReturnType<Cases> | RawHandlerReturnType<DefaultCase>
 
 // Object input with key - all cases required (no default)
 export function typedSwitch<
@@ -272,11 +263,7 @@ export function typedSwitch<
 	K extends keyof T,
 	TKey extends T[K] & string,
 	Cases extends { [V in TKey]: (value: Extract<T, Record<K, V>>) => unknown }
->(
-	value: T,
-	key: K,
-	cases: Cases
-): NormalizeReturnType<RawCasesReturnType<Cases>>
+>(value: T, key: K, cases: Cases): RawCasesReturnType<Cases>
 
 // Object input with key - partial cases allowed (with default)
 export function typedSwitch<
@@ -284,13 +271,13 @@ export function typedSwitch<
 	K extends keyof T,
 	TKey extends T[K] & string,
 	Cases extends { [V in TKey]?: (value: Extract<T, Record<K, V>>) => unknown },
-	DefaultReturn
+	DefaultCase extends (value: T) => unknown
 >(
 	value: T,
 	key: K,
 	cases: Cases,
-	defaultCase: (value: T) => DefaultReturn | Promise<DefaultReturn>
-): NormalizeReturnType<RawCasesReturnType<Cases> | DefaultReturn>
+	defaultCase: DefaultCase
+): RawCasesReturnType<Cases> | RawHandlerReturnType<DefaultCase>
 
 // Constraint mode - returns a constrained typedSwitch
 export function typedSwitch<Constraint>(): ConstrainedTypedSwitch<Constraint>

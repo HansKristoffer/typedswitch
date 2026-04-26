@@ -245,6 +245,34 @@ describe('typedSwitch runtime behavior', () => {
 				'Invalid discriminant value for key "type": expected string, received number'
 			)
 		})
+
+		test('throws on unhandled object discriminant without default', () => {
+			const invalidEvent = { type: 'hover' } as unknown as Event
+
+			expect(() =>
+				typedSwitch(invalidEvent, 'type', {
+					click: () => 'clicked',
+					scroll: () => 'scrolled',
+					key: () => 'keyed'
+				})
+			).toThrow(
+				'Unhandled case: hover (discriminant key: "type"). Available cases: click, scroll, key'
+			)
+		})
+
+		test('throws clear error when object mode is called without a string discriminant key', () => {
+			const event = getEvent({ type: 'click', x: 10, y: 20 })
+
+			expect(() =>
+				typedSwitch(event, { click: () => 'clicked' } as unknown as 'type', {
+					click: () => 'clicked',
+					scroll: () => 'scrolled',
+					key: () => 'keyed'
+				})
+			).toThrow(
+				'Invalid typedSwitch call: object mode requires a string discriminant key'
+			)
+		})
 	})
 })
 
@@ -324,13 +352,13 @@ describe('typedSwitch string mode type inference', () => {
 		)
 	})
 
-	test('async handlers are properly unwrapped in return type', async () => {
+	test('async handlers preserve promise return type when awaited', async () => {
 		const result = await typedSwitch(getStatus('success'), {
 			success: async () => 'async string',
 			error: () => 42
 		})
 
-		// Promise should be unwrapped - result is string | number, not Promise<string> | number
+		// Awaiting the raw return still produces the resolved union.
 		expectTypeOf(result).toEqualTypeOf<string | number>()
 	})
 
@@ -528,6 +556,77 @@ describe('typedSwitch exhaustiveness type checking', () => {
 	})
 })
 
+describe('typedSwitch negative type checking', () => {
+	test('rejects missing string cases without default', () => {
+		const assertTypeErrors = () => {
+			// @ts-expect-error missing the "pending" case without a default handler
+			typedSwitch(getTriStatus('success'), {
+				success: () => 'ok',
+				error: () => 'error'
+			})
+		}
+
+		expect(assertTypeErrors).toBeDefined()
+	})
+
+	test('rejects missing object cases without default', () => {
+		const assertTypeErrors = () => {
+			// @ts-expect-error missing the "key" case without a default handler
+			typedSwitch(getEvent({ type: 'click', x: 10, y: 20 }), 'type', {
+				click: () => 'clicked',
+				scroll: () => 'scrolled'
+			})
+		}
+
+		expect(assertTypeErrors).toBeDefined()
+	})
+
+	test('rejects invalid object discriminant keys', () => {
+		const assertTypeErrors = () => {
+			// @ts-expect-error "kind" is not a key of Event
+			typedSwitch(getEvent({ type: 'click', x: 10, y: 20 }), 'kind', {
+				click: () => 'clicked',
+				scroll: () => 'scrolled',
+				key: () => 'keyed'
+			})
+		}
+
+		expect(assertTypeErrors).toBeDefined()
+	})
+
+	test('rejects non-string object discriminant values', () => {
+		type NumericEvent = { type: 1; value: string } | { type: 2; value: number }
+
+		const assertTypeErrors = () => {
+			// @ts-expect-error object mode only supports string-valued discriminants
+			const cases: ObjectSwitchCases<NumericEvent, 'type', string> = {
+				1: () => 'one',
+				2: () => 'two'
+			}
+
+			expect(cases).toBeDefined()
+		}
+
+		expect(assertTypeErrors).toBeDefined()
+	})
+
+	test('constraint rejects handlers that do not satisfy the constraint', () => {
+		interface HasId {
+			id: string
+		}
+
+		const assertTypeErrors = () => {
+			typedSwitch<HasId>()(getStatus('success'), {
+				// @ts-expect-error success handler is missing the required "id" field
+				success: () => ({ name: 'John' }),
+				error: () => ({ id: '456' })
+			})
+		}
+
+		expect(assertTypeErrors).toBeDefined()
+	})
+})
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Type tests - Edge cases
 // ═══════════════════════════════════════════════════════════════════════════
@@ -559,7 +658,6 @@ describe('typedSwitch edge case types', () => {
 	test('handler returning void is typed correctly', async () => {
 		const result = await typedSwitch(getStatus('success'), {
 			success: () => {
-				console.log('side effect')
 				// implicit void return
 			},
 			error: () => undefined
@@ -631,14 +729,15 @@ describe('typedSwitch sync/async return type inference', () => {
 		expect(await result).toBe('ok')
 	})
 
-	test('mixed sync/async handlers return Promise type', async () => {
+	test('mixed sync/async handlers preserve raw selected return type', async () => {
 		const result = typedSwitch(getStatus('success'), {
 			success: () => 'sync',
 			error: async () => 'async'
 		})
 
-		// If ANY handler is async, result is Promise
-		expectTypeOf(result).toEqualTypeOf<Promise<string>>()
+		// The runtime returns the selected handler's raw value.
+		expectTypeOf(result).toEqualTypeOf<string | Promise<string>>()
+		expect(result).toBe('sync')
 	})
 
 	test('object mode: sync handlers return non-Promise type', () => {
@@ -735,9 +834,10 @@ describe('typedSwitch generic constraint mode', () => {
 			error: async () => ({ id: '2', code: 500 })
 		})
 
-		// With async handlers, result is Promise
+		// Each async branch preserves its own Promise return type.
 		expectTypeOf(result).toEqualTypeOf<
-			Promise<{ id: string; name: string } | { id: string; code: number }>
+			| Promise<{ id: string; name: string }>
+			| Promise<{ id: string; code: number }>
 		>()
 
 		const value = await result
@@ -766,6 +866,20 @@ describe('typedSwitch generic constraint mode', () => {
 		})
 
 		expect(result).toEqual({ id: 'success-id', value: 42 })
+	})
+
+	test('constraint: factory delegates object mode correctly at runtime', () => {
+		const result = typedSwitch<HasId>()(
+			getEvent({ type: 'key', key: 'Enter' }),
+			'type',
+			{
+				click: () => ({ id: 'click-id' }),
+				scroll: () => ({ id: 'scroll-id' }),
+				key: (e) => ({ id: `key-${e.key}` })
+			}
+		)
+
+		expect(result).toEqual({ id: 'key-Enter' })
 	})
 
 	test('without constraint: handlers can return anything', () => {
