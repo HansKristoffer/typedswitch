@@ -1,6 +1,6 @@
 {
   "name": "typedswitch",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A type-safe, exhaustive switch expression for TypeScript discriminated unions and string literals",
   "type": "module",
   "module": "./dist/index.js",
