@@ -610,16 +610,12 @@ describe('typedSwitch negative type checking', () => {
 		expect(assertTypeErrors).toBeDefined()
 	})
 
-	test('constraint rejects handlers that do not satisfy the constraint', () => {
-		interface HasId {
-			id: string
-		}
-
+	test('direct constraint rejects handlers that do not satisfy the constraint', () => {
 		const assertTypeErrors = () => {
-			typedSwitch<HasId>()(getStatus('success'), {
-				// @ts-expect-error success handler is missing the required "id" field
-				success: () => ({ name: 'John' }),
-				error: () => ({ id: '456' })
+			typedSwitch<number>(getStatus('success'), {
+				success: () => 1,
+				// @ts-expect-error error handler must return number or Promise<number>
+				error: () => 'not a number'
 			})
 		}
 
@@ -772,7 +768,7 @@ describe('typedSwitch sync/async return type inference', () => {
 // Type tests - Generic constraint mode
 // ═══════════════════════════════════════════════════════════════════════════
 
-describe('typedSwitch generic constraint mode', () => {
+describe('typedSwitch return constraint mode', () => {
 	interface HasId {
 		id: string
 	}
@@ -788,30 +784,26 @@ describe('typedSwitch generic constraint mode', () => {
 	}
 
 	test('constraint: handlers must return type extending constraint', () => {
-		// When constraint is provided, all handlers must satisfy it
-		const result = typedSwitch<HasId>()(getStatus('success'), {
+		const result = typedSwitch<HasId>(getStatus('success'), {
 			success: () => ({ id: '123', name: 'John' }) as UserResult,
 			error: () => ({ id: '456', code: 500 }) as ErrorResult
 		})
 
-		// Return type is the union of actual returns, not just the constraint
-		expectTypeOf(result).toEqualTypeOf<UserResult | ErrorResult>()
+		expectTypeOf(result).toEqualTypeOf<HasId>()
 	})
 
-	test('constraint: preserves narrower return types', () => {
-		const result = typedSwitch<HasId>()(getStatus('success'), {
-			success: () => ({ id: '1', extra: true }),
-			error: () => ({ id: '2', different: 'value' })
+	test('constraint: works with primitive return constraints', () => {
+		const result = typedSwitch<number>(getStatus('success'), {
+			success: () => 1,
+			error: () => 0
 		})
 
-		// Result should have the full inferred types, not just HasId
-		expectTypeOf(result).toEqualTypeOf<
-			{ id: string; extra: boolean } | { id: string; different: string }
-		>()
+		expectTypeOf(result).toEqualTypeOf<number>()
+		expect(result).toBe(1)
 	})
 
 	test('constraint: works with object mode', () => {
-		const result = typedSwitch<HasId>()(
+		const result = typedSwitch<HasId>(
 			getEvent({ type: 'click', x: 10, y: 20 }),
 			'type',
 			{
@@ -821,31 +813,23 @@ describe('typedSwitch generic constraint mode', () => {
 			}
 		)
 
-		expectTypeOf(result).toEqualTypeOf<
-			| { id: string; coords: { x: number; y: number } }
-			| { id: string; offset: number }
-			| { id: string; pressed: string }
-		>()
+		expectTypeOf(result).toEqualTypeOf<HasId>()
 	})
 
 	test('constraint: works with async handlers', async () => {
-		const result = typedSwitch<HasId>()(getStatus('success'), {
+		const result = typedSwitch<HasId>(getStatus('success'), {
 			success: async () => ({ id: '1', name: 'John' }),
 			error: async () => ({ id: '2', code: 500 })
 		})
 
-		// Each async branch preserves its own Promise return type.
-		expectTypeOf(result).toEqualTypeOf<
-			| Promise<{ id: string; name: string }>
-			| Promise<{ id: string; code: number }>
-		>()
+		expectTypeOf(result).toEqualTypeOf<HasId | Promise<HasId>>()
 
 		const value = await result
-		expect(value).toEqual({ id: '1', name: 'John' })
+		expect(value).toMatchObject({ id: '1' })
 	})
 
 	test('constraint: with default enforces constraint and preserves inferred union', async () => {
-		const result = await typedSwitch<HasId>()(
+		const result = await typedSwitch<HasId>(
 			getTriStatus('pending'),
 			{
 				success: () => ({ id: 'success-1', kind: 'success' as const })
@@ -853,33 +837,17 @@ describe('typedSwitch generic constraint mode', () => {
 			(status) => ({ id: `default-${status}`, kind: 'default' as const })
 		)
 
-		expectTypeOf(result).toEqualTypeOf<
-			{ id: string; kind: 'success' } | { id: string; kind: 'default' }
-		>()
-		expect(result).toEqual({ id: 'default-pending', kind: 'default' })
+		expectTypeOf(result).toEqualTypeOf<HasId>()
+		expect(result).toMatchObject({ id: 'default-pending' })
 	})
 
 	test('constraint: runtime behavior works correctly', () => {
-		const result = typedSwitch<HasId>()(getStatus('success'), {
+		const result = typedSwitch<HasId>(getStatus('success'), {
 			success: () => ({ id: 'success-id', value: 42 }),
 			error: () => ({ id: 'error-id', message: 'failed' })
 		})
 
-		expect(result).toEqual({ id: 'success-id', value: 42 })
-	})
-
-	test('constraint: factory delegates object mode correctly at runtime', () => {
-		const result = typedSwitch<HasId>()(
-			getEvent({ type: 'key', key: 'Enter' }),
-			'type',
-			{
-				click: () => ({ id: 'click-id' }),
-				scroll: () => ({ id: 'scroll-id' }),
-				key: (e) => ({ id: `key-${e.key}` })
-			}
-		)
-
-		expect(result).toEqual({ id: 'key-Enter' })
+		expect(result).toMatchObject({ id: 'success-id' })
 	})
 
 	test('without constraint: handlers can return anything', () => {

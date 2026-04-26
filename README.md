@@ -178,7 +178,7 @@ const result = typedSwitch(status, {
 
 ### Return Type Constraints
 
-Enforce that all handlers return a type extending a constraint using the curried form `typedSwitch<Constraint>()`:
+Enforce that all handlers return a type extending a constraint with `typedSwitch<Constraint>(...)`. The `<Constraint>` is optional; omit it when you want TypeScript to infer the return types freely.
 
 ```typescript
 interface HasId {
@@ -186,25 +186,25 @@ interface HasId {
 }
 
 // All handlers must return something with { id: string }
-const result = typedSwitch<HasId>()(status, {
+const result = typedSwitch<HasId>(status, {
   success: () => ({ id: '123', name: 'John' }),     // ✓ OK
   error: () => ({ id: '456', code: 500 }),          // ✓ OK
   pending: () => ({ id: '789' }),                   // ✓ OK
 })
-// result: { id: string; name: string } | { id: string; code: number } | { id: string }
+// result: HasId
 
 // This would be a compile error:
-typedSwitch<HasId>()(status, {
+typedSwitch<HasId>(status, {
   success: () => ({ name: 'John' }),  // ✗ Error: missing 'id'
   error: () => ({ id: '456' }),
   pending: () => ({ id: '789' }),
 })
 ```
 
-Works with discriminated unions and default handlers:
+Constraints also work with discriminated unions and default handlers:
 
 ```typescript
-const result = typedSwitch<HasId>()(
+const result = typedSwitch<HasId>(
   event,
   'type',
   {
@@ -255,9 +255,13 @@ Switch on a discriminated union using the specified discriminant key.
 
 Switch on a discriminated union with partial cases and a default fallback.
 
-### `typedSwitch<Constraint>()`
+### `typedSwitch<Constraint>(value, cases)`
 
-Returns a constrained version of `typedSwitch` that enforces all handlers return a type extending `Constraint`.
+Switch on a string literal while enforcing that each handler returns `Constraint` or `Promise<Constraint>`.
+
+### `typedSwitch<Constraint>(object, key, cases)`
+
+Switch on a discriminated union while enforcing that each handler returns `Constraint` or `Promise<Constraint>`.
 
 ### Exported Helper Types
 

@@ -46,19 +46,19 @@
  *    })
  *
  *
- * 3. WITH CONSTRAINT - use `typedSwitch<T>()` to enforce return type:
+ * 3. WITH CONSTRAINT - use `typedSwitch<T>` to enforce return type:
  *
  *    @example
  *    interface HasId { id: string }
  *
  *    // All handlers must return something with { id: string }
- *    typedSwitch<HasId>()(status, {
+ *    typedSwitch<HasId>(status, {
  *      success: () => ({ id: '123', name: 'John' }), // ✓ OK
  *      error: () => ({ id: '456' }), // ✓ OK
  *    })
  *
  *    // Type error - missing 'id' property
- *    typedSwitch<HasId>()(status, {
+ *    typedSwitch<HasId>(status, {
  *      success: () => ({ name: 'John' }), // ✗ Error!
  *      error: () => ({ id: '456' }),
  *    })
@@ -183,63 +183,6 @@ function runSwitch(
 // Function overloads
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** A constrained typedSwitch factory returned by `typedSwitch<Constraint>()` */
-export type ConstrainedTypedSwitch<Constraint> = {
-	// String input - all cases required (no default)
-	<
-		T extends string,
-		Cases extends { [K in T]: (value: K) => Constraint | Promise<Constraint> }
-	>(
-		value: T,
-		cases: Cases
-	): RawCasesReturnType<Cases>
-
-	// String input - partial cases allowed (with default)
-	<
-		T extends string,
-		Cases extends { [K in T]?: (value: K) => Constraint | Promise<Constraint> },
-		DefaultCase extends (value: T) => Constraint | Promise<Constraint>
-	>(
-		value: T,
-		cases: Cases,
-		defaultCase: DefaultCase
-	): RawCasesReturnType<Cases> | RawHandlerReturnType<DefaultCase>
-
-	// Object input with key - all cases required (no default)
-	<
-		T extends Record<string, unknown>,
-		K extends keyof T,
-		TKey extends T[K] & string,
-		Cases extends {
-			[V in TKey]: (
-				value: Extract<T, Record<K, V>>
-			) => Constraint | Promise<Constraint>
-		}
-	>(
-		value: T,
-		key: K,
-		cases: Cases
-	): RawCasesReturnType<Cases>
-
-	// Object input with key - partial cases allowed (with default)
-	<
-		T extends Record<string, unknown>,
-		K extends keyof T,
-		TKey extends T[K] & string,
-		Cases extends {
-			[V in TKey]?: (
-				value: Extract<T, Record<K, V>>
-			) => Constraint | Promise<Constraint>
-		},
-		DefaultCase extends (value: T) => Constraint | Promise<Constraint>
-	>(
-		value: T,
-		key: K,
-		cases: Cases,
-		defaultCase: DefaultCase
-	): RawCasesReturnType<Cases> | RawHandlerReturnType<DefaultCase>
-}
-
 // String input - all cases required (no default)
 export function typedSwitch<
 	T extends string,
@@ -279,35 +222,88 @@ export function typedSwitch<
 	defaultCase: DefaultCase
 ): RawCasesReturnType<Cases> | RawHandlerReturnType<DefaultCase>
 
-// Constraint mode - returns a constrained typedSwitch
-export function typedSwitch<Constraint>(): ConstrainedTypedSwitch<Constraint>
+// String input - all cases required with return constraint (no default)
+export function typedSwitch<Constraint, T extends string = string>(
+	value: T,
+	cases: { [K in T]: (value: K) => Constraint }
+): Constraint
+export function typedSwitch<Constraint, T extends string = string>(
+	value: T,
+	cases: { [K in T]: (value: K) => Constraint | Promise<Constraint> }
+): Constraint | Promise<Constraint>
+
+// String input - partial cases allowed with return constraint (with default)
+export function typedSwitch<Constraint, T extends string = string>(
+	value: T,
+	cases: { [K in T]?: (value: K) => Constraint },
+	defaultCase: (value: T) => Constraint
+): Constraint
+export function typedSwitch<Constraint, T extends string = string>(
+	value: T,
+	cases: { [K in T]?: (value: K) => Constraint | Promise<Constraint> },
+	defaultCase: (value: T) => Constraint | Promise<Constraint>
+): Constraint | Promise<Constraint>
+
+// Object input with key - all cases required with return constraint (no default)
+export function typedSwitch<
+	Constraint,
+	T extends Record<string, unknown> = Record<string, unknown>,
+	K extends keyof T = keyof T
+>(
+	value: T,
+	key: K,
+	cases: {
+		[V in T[K] & string]: (value: Extract<T, Record<K, V>>) => Constraint
+	}
+): Constraint
+export function typedSwitch<
+	Constraint,
+	T extends Record<string, unknown> = Record<string, unknown>,
+	K extends keyof T = keyof T
+>(
+	value: T,
+	key: K,
+	cases: {
+		[V in T[K] & string]: (
+			value: Extract<T, Record<K, V>>
+		) => Constraint | Promise<Constraint>
+	}
+): Constraint | Promise<Constraint>
+
+// Object input with key - partial cases allowed with return constraint (with default)
+export function typedSwitch<
+	Constraint,
+	T extends Record<string, unknown> = Record<string, unknown>,
+	K extends keyof T = keyof T
+>(
+	value: T,
+	key: K,
+	cases: {
+		[V in T[K] & string]?: (value: Extract<T, Record<K, V>>) => Constraint
+	},
+	defaultCase: (value: T) => Constraint
+): Constraint
+export function typedSwitch<
+	Constraint,
+	T extends Record<string, unknown> = Record<string, unknown>,
+	K extends keyof T = keyof T
+>(
+	value: T,
+	key: K,
+	cases: {
+		[V in T[K] & string]?: (
+			value: Extract<T, Record<K, V>>
+		) => Constraint | Promise<Constraint>
+	},
+	defaultCase: (value: T) => Constraint | Promise<Constraint>
+): Constraint | Promise<Constraint>
 
 // Implementation
 export function typedSwitch(
-	value?: string | Record<string, unknown>,
-	keyOrCases?: string | CasesRecord,
+	value: string | Record<string, unknown>,
+	keyOrCases: string | CasesRecord,
 	casesOrDefault?: CasesRecord | Handler,
 	defaultCase?: Handler
 ): unknown {
-	if (value === undefined) {
-		return ((
-			constrainedValue: string | Record<string, unknown>,
-			constrainedKeyOrCases: string | CasesRecord,
-			constrainedCasesOrDefault?: CasesRecord | Handler,
-			constrainedDefaultCase?: Handler
-		): unknown =>
-			runSwitch(
-				constrainedValue,
-				constrainedKeyOrCases,
-				constrainedCasesOrDefault,
-				constrainedDefaultCase
-			)) as ConstrainedTypedSwitch<unknown>
-	}
-
-	return runSwitch(
-		value,
-		keyOrCases as string | CasesRecord,
-		casesOrDefault,
-		defaultCase
-	)
+	return runSwitch(value, keyOrCases, casesOrDefault, defaultCase)
 }
